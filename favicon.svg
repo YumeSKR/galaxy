@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <radialGradient id="bg" cx="46%" cy="40%" r="72%">
+      <stop offset="0%"   stop-color="#1b2a6e"/>
+      <stop offset="48%"  stop-color="#0b1136"/>
+      <stop offset="100%" stop-color="#03040e"/>
+    </radialGradient>
+    <radialGradient id="halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#ffffff" stop-opacity=".5"/>
+      <stop offset="38%"  stop-color="#bcd4ff" stop-opacity=".2"/>
+      <stop offset="100%" stop-color="#6f8cff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- 深空圆角底 -->
+  <rect width="64" height="64" rx="15" fill="url(#bg)"/>
+
+  <!-- 星光晕 -->
+  <circle cx="30" cy="30" r="26" fill="url(#halo)"/>
+
+  <!-- 主星：四角 sparkle -->
+  <path d="M30 5 Q32.6 27.4 55 30 Q32.6 32.6 30 55 Q27.4 32.6 5 30 Q27.4 27.4 30 5 Z"
+        fill="#ffffff"/>
+
+  <!-- 点缀的小星 -->
+  <path d="M50 43 Q50.9 49.1 57 50 Q50.9 50.9 50 57 Q49.1 50.9 43 50 Q49.1 49.1 50 43 Z"
+        fill="#cfe2ff" opacity=".92"/>
+</svg>

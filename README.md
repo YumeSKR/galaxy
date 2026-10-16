@@ -66,6 +66,7 @@ xdg-open index.html  # Linux
 ```
 .
 ├── index.html       # 主页面
+├── favicon.svg      # 站点图标
 └── bgm.mp3          # 背景音乐
 ```
 
