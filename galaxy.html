@@ -1,0 +1,1381 @@
+<!DOCTYPE html>
+<html lang="zh-CN" style="background:#010207">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<meta name="theme-color" content="#010207" />
+<title>星空 · 银河系</title>
+<style>
+  :root{
+    --ease: cubic-bezier(.22,.61,.36,1);
+    --bg: #010207;
+  }
+
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  /* html 也要上底色：只给 body 设的话，样式解析前可能先绘制一帧浏览器默认白底 */
+  html{ background:var(--bg); }
+  html,body{ height:100%; }
+  body{
+    background:var(--bg);
+    overflow:hidden;
+    font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  #sky{
+    position:fixed; inset:0;
+    width:100%; height:100%;
+    display:block;
+  }
+
+  /* 开场：银心先亮起一团光，随后星光从中心扩散
+     注意 —— 这里刻意不给 #sky 加 transform 缩放：
+     SVG 内有多个大半径高斯模糊，缩放会让滤镜缓存每帧失效并重新光栅化，
+     实测帧率会掉到 11fps 并出现近半秒的卡死。光效只改 opacity，纯合成开销。 */
+  #flash{ animation:flashIntro 2.6s cubic-bezier(.3,.5,.4,1) .1s both; }
+  @keyframes flashIntro{
+    0%  { opacity:0; }
+    18% { opacity:.72; }
+    100%{ opacity:0; }
+  }
+
+  /* 视差层：鼠标移动时整体平移 */
+  .layer{ transition:transform .35s cubic-bezier(.25,.46,.45,.94); will-change:transform; }
+
+  /* 星星闪烁 */
+  .star{
+    animation-name:twinkle;
+    animation-iteration-count:infinite;
+    animation-timing-function:ease-in-out;
+  }
+  @keyframes twinkle{
+    0%,100%{ opacity:var(--o); }
+    50%    { opacity:calc(var(--o) * .16); }
+  }
+
+  /* 银河核心呼吸 */
+  .breathe{ animation:breathe 11s ease-in-out infinite; }
+  @keyframes breathe{
+    0%,100%{ opacity:.82; }
+    50%    { opacity:1; }
+  }
+
+  /* 流星 */
+  .shoot{
+    animation-name:shoot;
+    animation-fill-mode:forwards;
+  }
+  @keyframes shoot{
+    0%   { transform:translate(0,0);      opacity:0; }
+    8%   { opacity:1; }
+    78%  { opacity:.95; }
+    100% { transform:translate(var(--tx),var(--ty)); opacity:0; }
+  }
+
+  /* 召唤时的辐射点涟漪 */
+  @keyframes ripple{
+    0%  { transform:scale(.15); opacity:.5; }
+    100%{ transform:scale(6.5); opacity:0; }
+  }
+
+  /* 点击种星：绽放光环 */
+  @keyframes bloom{
+    0%  { transform:scale(.15); opacity:.85; }
+    100%{ transform:scale(4.8); opacity:0; }
+  }
+  /* 点击种星：星核弹出 */
+  @keyframes starPop{
+    0%  { transform:scale(0);    opacity:0; }
+    18% { opacity:1; }
+    62% { transform:scale(1.6); }
+    100%{ transform:scale(1);    opacity:1; }
+  }
+  /* 鼠标星尘 */
+  @keyframes dustFade{
+    0%  { opacity:.55; transform:scale(1); }
+    100%{ opacity:0;   transform:scale(2.6); }
+  }
+
+  /* 空格定格：暂停一切动画 */
+  body.paused .star,
+  body.paused .breathe,
+  body.paused .shoot{ animation-play-state:paused; }
+
+  /* 光标柔光：位置由 JS 平滑追随，CSS 只负责淡入淡出 */
+  #cursorGlow{ transition:opacity .6s ease; }
+
+  /* 左下角标题 */
+  .hud{
+    position:fixed;
+    left:clamp(20px,4.5vw,64px);
+    bottom:clamp(20px,5vh,56px);
+    color:#e9f0ff;
+    pointer-events:none;
+    opacity:0;
+    transition:opacity .55s ease;
+    animation:hudIn 1.8s var(--ease) 2.1s forwards;
+  }
+  .hud::before{
+    content:"";
+    display:block;
+    width:52px; height:1px;
+    margin-bottom:16px;
+    background:linear-gradient(90deg, rgba(180,210,255,.95), rgba(180,210,255,0));
+  }
+  .hud h1{
+    font-size:clamp(14px,1.5vw,20px);
+    font-weight:400;
+    letter-spacing:.44em;
+    text-transform:uppercase;
+    margin-bottom:11px;
+    text-shadow:0 0 26px rgba(150,190,255,.6);
+  }
+  .hud p{
+    font-size:clamp(10px,.95vw,12px);
+    letter-spacing:.26em;
+    color:rgba(198,216,255,.48);
+  }
+  .hud .count{
+    margin-top:15px;
+    font-size:clamp(10px,.95vw,12px);
+    letter-spacing:.2em;
+    color:rgba(198,216,255,.42);
+  }
+  .hud .count b{
+    font-weight:400;
+    color:rgba(234,243,255,.95);
+    font-variant-numeric:tabular-nums;
+  }
+
+  /* 背景音乐开关 */
+  .music{
+    margin-top:22px;
+    display:inline-flex;
+    align-items:center;
+    gap:11px;
+    padding:7px 16px 8px;
+    border:1px solid rgba(160,195,255,.2);
+    border-radius:999px;
+    background:rgba(120,165,255,.05);
+    color:rgba(212,230,255,.7);
+    font-family:inherit;
+    font-size:clamp(10px,.9vw,11.5px);
+    letter-spacing:.2em;
+    cursor:pointer;
+    pointer-events:auto;
+    transition:border-color .3s, background .3s, color .3s;
+  }
+  .music:hover{
+    border-color:rgba(190,215,255,.5);
+    background:rgba(120,165,255,.12);
+    color:rgba(234,243,255,.95);
+  }
+  .bars{
+    display:flex;
+    align-items:flex-end;
+    gap:2.5px;
+    height:13px;
+  }
+  .bars i{
+    display:block;
+    width:2px;
+    height:4px;
+    border-radius:1px;
+    background:currentColor;
+    opacity:.5;
+  }
+  .music.playing .bars i{
+    opacity:.95;
+    animation:bar 1.1s ease-in-out infinite;
+  }
+  .music.playing .bars i:nth-child(2){ animation-delay:.18s; }
+  .music.playing .bars i:nth-child(3){ animation-delay:.36s; }
+  .music.playing .bars i:nth-child(4){ animation-delay:.54s; }
+  @keyframes bar{
+    0%,100%{ height:4px; }
+    50%    { height:13px; }
+  }
+  @keyframes hudIn{
+    from{ opacity:0; transform:translateY(16px); }
+    to  { opacity:1; transform:translateY(0); }
+  }
+
+  /* 右下角操作面板 */
+  .panel{
+    position:fixed;
+    right:clamp(20px,4.5vw,64px);
+    bottom:clamp(20px,5vh,56px);
+    text-align:right;
+    color:#e9f0ff;
+    pointer-events:none;
+    opacity:0;
+    transition:opacity .55s ease;
+    animation:hudIn 1.8s var(--ease) 2.5s forwards;
+  }
+  .panel .mode{
+    font-size:clamp(10px,.9vw,11.5px);
+    letter-spacing:.22em;
+    color:rgba(198,216,255,.38);
+    margin-bottom:16px;
+  }
+  .panel .mode b{
+    font-weight:400;
+    color:rgba(214,231,255,.78);
+  }
+  .keys{
+    list-style:none;
+    display:flex;
+    flex-direction:column;
+    align-items:flex-end;
+    gap:10px;
+  }
+  .keys li{
+    display:flex;
+    align-items:center;
+    gap:11px;
+    font-size:clamp(10px,.9vw,11.5px);
+    letter-spacing:.18em;
+    color:rgba(198,216,255,.4);
+  }
+  .keys kbd{
+    font-family:inherit;
+    font-size:.94em;
+    letter-spacing:.02em;
+    min-width:2.1em;
+    text-align:center;
+    padding:2px 8px 3px;
+    border:1px solid rgba(160,195,255,.2);
+    border-radius:5px;
+    color:rgba(226,238,255,.78);
+    background:rgba(120,165,255,.06);
+    white-space:nowrap;
+    transition:border-color .3s, color .3s, box-shadow .3s;
+  }
+  .keys li:first-child kbd{
+    border-color:rgba(170,203,255,.34);
+    animation:kbdPulse 3.6s ease-in-out infinite;
+  }
+  @keyframes kbdPulse{
+    0%,100%{ box-shadow:inset 0 0 16px rgba(120,165,255,.06); }
+    50%    { box-shadow:inset 0 0 22px rgba(150,190,255,.26); }
+  }
+
+  /* 定格 / 隐藏 UI 状态提示 */
+  body.paused .panel .mode b{ color:rgba(255,226,160,.9); }
+  body.hideui .hud,
+  body.hideui .panel{ opacity:0 !important; }
+
+  /* 渐变换色时平滑过渡 */
+  stop{ transition:stop-color .9s ease; }
+
+  /* 窄屏：面板挪到右上角，避免与左下角标题挤在一起 */
+  @media (max-width: 700px){
+    .panel{
+      right:clamp(16px,4vw,28px);
+      bottom:auto;
+      top:clamp(18px,4vh,36px);
+    }
+    .panel .mode{ margin-bottom:12px; }
+    .keys{ gap:8px; }
+    .keys li{ font-size:10px; letter-spacing:.1em; }
+    .hud{ left:clamp(16px,4vw,28px); }
+    .hud p{ letter-spacing:.18em; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    #flash{ animation:none; opacity:0; }
+    .star{ animation:none; opacity:var(--o); }
+    .breathe{ animation:none; }
+    .layer{ transition:none; }
+    #cursorGlow{ transition:none; }
+    .hud, .panel{ animation:none; opacity:1; }
+  }
+</style>
+</head>
+<body>
+
+<audio id="bgm" src="bgm.mp3" loop preload="auto"></audio>
+
+<svg id="sky" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- ============ 底色 ============ -->
+    <radialGradient id="gBg" cx="44%" cy="50%" r="78%">
+      <stop offset="0%"   stop-color="#0b1136"/>
+      <stop offset="42%"  stop-color="#050818"/>
+      <stop offset="100%" stop-color="#010208"/>
+    </radialGradient>
+
+    <!-- ============ 银河：外层冷光晕 ============
+         这一层原本挂 stdDeviation=130 的模糊，实测占掉全部滤镜开销的四分之三。
+         渐变本身已是平滑衰减到全透明，模糊纯属多余 —— 去掉后补足椭圆尺寸即可。 -->
+    <radialGradient id="gHalo" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#8fa6ff" stop-opacity=".20"/>
+      <stop offset="22%"  stop-color="#7d90f0" stop-opacity=".155"/>
+      <stop offset="45%"  stop-color="#6d63d8" stop-opacity=".10"/>
+      <stop offset="68%"  stop-color="#3b2f8f" stop-opacity=".042"/>
+      <stop offset="86%"  stop-color="#2a2070" stop-opacity=".014"/>
+      <stop offset="100%" stop-color="#1a1040" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- ============ 银河：主带 ============ -->
+    <radialGradient id="gBand" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#fff6e4" stop-opacity=".70"/>
+      <stop offset="16%"  stop-color="#ffe6bd" stop-opacity=".50"/>
+      <stop offset="38%"  stop-color="#dcc4ff" stop-opacity=".28"/>
+      <stop offset="62%"  stop-color="#8d7ae0" stop-opacity=".14"/>
+      <stop offset="84%"  stop-color="#453a9c" stop-opacity=".055"/>
+      <stop offset="100%" stop-color="#20164f" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- ============ 银河：银心 ============ -->
+    <radialGradient id="gCore" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#fffdf6" stop-opacity=".98"/>
+      <stop offset="14%"  stop-color="#fff0cd" stop-opacity=".86"/>
+      <stop offset="34%"  stop-color="#f8d19a" stop-opacity=".54"/>
+      <stop offset="58%"  stop-color="#c3a2ee" stop-opacity=".26"/>
+      <stop offset="82%"  stop-color="#5443a8" stop-opacity=".09"/>
+      <stop offset="100%" stop-color="#1d1450" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- ============ 星云斑块 ============ -->
+    <!-- 星云：用 6 段密集 stop 模拟高斯衰减，这样不需要滤镜也不会出现硬边 -->
+    <radialGradient id="nPurple" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#a077ff" stop-opacity=".34"/>
+      <stop offset="22%"  stop-color="#9366f8" stop-opacity=".26"/>
+      <stop offset="45%"  stop-color="#7b4ff0" stop-opacity=".16"/>
+      <stop offset="68%"  stop-color="#5c37c8" stop-opacity=".075"/>
+      <stop offset="86%"  stop-color="#452a9f" stop-opacity=".022"/>
+      <stop offset="100%" stop-color="#3a1f8f" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="nBlue" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#5b9bff" stop-opacity=".29"/>
+      <stop offset="24%"  stop-color="#4a83f0" stop-opacity=".21"/>
+      <stop offset="48%"  stop-color="#2f5fd8" stop-opacity=".13"/>
+      <stop offset="70%"  stop-color="#1e4299" stop-opacity=".06"/>
+      <stop offset="87%"  stop-color="#16336f" stop-opacity=".018"/>
+      <stop offset="100%" stop-color="#122a6e" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="nPink" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#ff8ad0" stop-opacity=".22"/>
+      <stop offset="24%"  stop-color="#f06ab8" stop-opacity=".16"/>
+      <stop offset="46%"  stop-color="#d94fa0" stop-opacity=".095"/>
+      <stop offset="70%"  stop-color="#9c3474" stop-opacity=".04"/>
+      <stop offset="87%"  stop-color="#7d2a60" stop-opacity=".012"/>
+      <stop offset="100%" stop-color="#6a1f52" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="nTeal" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#5fe3d8" stop-opacity=".17"/>
+      <stop offset="26%"  stop-color="#3fbcc0" stop-opacity=".12"/>
+      <stop offset="50%"  stop-color="#1f8f9c" stop-opacity=".075"/>
+      <stop offset="72%"  stop-color="#155f6e" stop-opacity=".03"/>
+      <stop offset="87%"  stop-color="#114a58" stop-opacity=".012"/>
+      <stop offset="100%" stop-color="#0d3a4a" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- ============ 远处星系 ============ -->
+    <radialGradient id="gDisk" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#eef4ff" stop-opacity=".50"/>
+      <stop offset="38%"  stop-color="#aabef0" stop-opacity=".20"/>
+      <stop offset="70%"  stop-color="#6a7ec8" stop-opacity=".07"/>
+      <stop offset="100%" stop-color="#3a4a8f" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="gGalCore" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#fffaf0" stop-opacity=".92"/>
+      <stop offset="42%"  stop-color="#ffdda8" stop-opacity=".40"/>
+      <stop offset="100%" stop-color="#8a6a40" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="gEllip" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#ffeacf" stop-opacity=".52"/>
+      <stop offset="52%"  stop-color="#c9a98a" stop-opacity=".17"/>
+      <stop offset="100%" stop-color="#6a5a48" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="gDwarf" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#e6f0ff" stop-opacity=".62"/>
+      <stop offset="55%"  stop-color="#9fb4e8" stop-opacity=".2"/>
+      <stop offset="100%" stop-color="#5a6aa8" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- ============ 亮星辉光（用渐变替代滤镜） ============ -->
+    <radialGradient id="gStarGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#ffffff" stop-opacity=".50"/>
+      <stop offset="28%"  stop-color="#dce8ff" stop-opacity=".16"/>
+      <stop offset="62%"  stop-color="#a8c0ff" stop-opacity=".045"/>
+      <stop offset="100%" stop-color="#7a92ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="gRay" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="50%"  stop-color="#ffffff" stop-opacity=".6"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- ============ 开场：银心闪光 ============ -->
+    <radialGradient id="gFlash" cx="38%" cy="57%" r="44%">
+      <stop offset="0%"   stop-color="#fff6e2" stop-opacity=".46"/>
+      <stop offset="42%"  stop-color="#ffd9a0" stop-opacity=".15"/>
+      <stop offset="100%" stop-color="#6a4fa0" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- ============ 光标柔光 ============ -->
+    <radialGradient id="gCursor" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#c6dcff" stop-opacity=".13"/>
+      <stop offset="42%"  stop-color="#93a9ff" stop-opacity=".05"/>
+      <stop offset="100%" stop-color="#5a6fd0" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- ============ 流星拖尾 ============ -->
+    <linearGradient id="trail" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="55%"  stop-color="#cfe2ff" stop-opacity=".42"/>
+      <stop offset="88%"  stop-color="#eaf3ff" stop-opacity=".85"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="1"/>
+    </linearGradient>
+
+    <!-- ============ 模糊滤镜 ============ -->
+    <!-- 滤镜的 x/y/width/height 会显著影响开销：渲染区域按元素 bbox 的百分比算，
+         之前 210% 会把 rx=1980 的椭圆撑到 8000px 宽再跑 stdDeviation=130 的模糊，
+         单帧光栅化要几百毫秒。这里收紧到刚好容纳模糊扩散范围。 -->
+    <!-- 光晕 / 星云。模糊在这里的作用不只是柔化边缘，更是把椭圆的几何形状打散成
+         「一团自然的光」—— 去掉后椭圆的长宽比会直接暴露，看起来像被拉伸。
+         所以必须保留，只是把半径和元素尺寸一起收小来控制开销。 -->
+    <filter id="blurXL" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="95"/>
+    </filter>
+    <filter id="blurL" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="62"/>
+    </filter>
+    <filter id="blurM" x="-45%" y="-45%" width="190%" height="190%">
+      <feGaussianBlur stdDeviation="34"/>
+    </filter>
+    <!-- 尘埃暗带 / 碎光是细长椭圆（ry 只有几十），filter region 若用百分比会按 bbox 计算，
+         30% 只有 20px 左右，远小于模糊扩散半径，边缘会被裁掉变成硬边细条。
+         改用 userSpaceOnUse 按绝对坐标给足渲染区域。
+         注意 region 必须罩住**最大的那个环**（rx595 ry292，圆心 cy=-6 → y 到 ±298），
+         再留出 stdDeviation 30 的扩散余量，否则外圈上下会被硬裁出斜切边。 -->
+    <filter id="blurDust" filterUnits="userSpaceOnUse"
+            x="-920" y="-440" width="1840" height="880">
+      <feGaussianBlur stdDeviation="30"/>
+    </filter>
+
+    <!-- ============ 尘埃：与银盘同构的椭圆环 ============ -->
+    <!-- 暗尘团块用径向渐变柔化，替代滤镜（移动元素挂滤镜每帧重算，太贵） -->
+    <radialGradient id="gDustDark" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#06080f" stop-opacity=".42"/>
+      <stop offset="18%"  stop-color="#070a12" stop-opacity=".34"/>
+      <stop offset="40%"  stop-color="#090c18" stop-opacity=".21"/>
+      <stop offset="66%"  stop-color="#0b0f1e" stop-opacity=".085"/>
+      <stop offset="100%" stop-color="#0e1224" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- 环绕轨道：以银心 (-130,-6) 为圆心的椭圆，长短轴比 ≈ 2:1，与主盘同构 -->
+    <path id="dustOrbIn"  d="M -390,-6 a 260,128 0 1,0 520,0 a 260,128 0 1,0 -520,0"/>
+    <path id="dustOrbMid" d="M -560,-6 a 430,212 0 1,0 860,0 a 430,212 0 1,0 -860,0"/>
+    <path id="dustOrbOut" d="M -685,-6 a 555,274 0 1,0 1110,0 a 555,274 0 1,0 -1110,0"/>
+    <filter id="blurS" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="8"/>
+    </filter>
+    <filter id="glow" x="-200%" y="-200%" width="500%" height="500%">
+      <feGaussianBlur stdDeviation="2.2" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- ============ 开场遮罩：星光自银心向外扩散 ============ -->
+    <mask id="introMask" maskUnits="userSpaceOnUse" x="0" y="0" width="1600" height="900">
+      <circle cx="610" cy="513" r="0" fill="#ffffff">
+        <animate attributeName="r" values="0;1500" dur="2.6s" begin="0.15s" fill="freeze"
+                 calcMode="spline" keyTimes="0;1" keySplines="0.44 0 0.28 1"/>
+      </circle>
+    </mask>
+  </defs>
+
+  <!-- 底色 -->
+  <rect x="0" y="0" width="1600" height="900" fill="url(#gBg)"/>
+
+  <g id="scene" mask="url(#introMask)">
+  <!-- 远处星系 -->
+  <g id="galaxies" class="layer"></g>
+
+  <!-- 远景星 -->
+  <g id="starsFar" class="layer"></g>
+
+  <!-- 星云 -->
+  <g id="nebula" class="layer">
+    <g filter="url(#blurXL)">
+      <ellipse cx="1180" cy="250" rx="430" ry="300" fill="url(#nPurple)"/>
+      <ellipse cx="430"  cy="640" rx="480" ry="330" fill="url(#nBlue)"/>
+      <ellipse cx="1420" cy="700" rx="360" ry="260" fill="url(#nPink)"/>
+      <ellipse cx="700"  cy="180" rx="320" ry="230" fill="url(#nTeal)"/>
+    </g>
+  </g>
+
+  <!-- 银河 -->
+  <g id="galaxy" class="layer">
+    <g transform="translate(800 450) rotate(-20)">
+      <!-- 整体收成一个盘状椭圆，四边留出星空，而不是横贯画面的长带 -->
+
+      <!-- 1. 外围辉光：星系晕 -->
+      <ellipse rx="940" ry="490" fill="url(#gHalo)" filter="url(#blurXL)"/>
+
+      <!-- 2. 主盘 -->
+      <ellipse rx="660" ry="310" fill="url(#gBand)" filter="url(#blurL)"/>
+
+      <!-- 3. 银心（偏一侧更真实）：外柔 + 内亮双层 -->
+      <g class="breathe">
+        <ellipse cx="-130" cy="-6" rx="320" ry="180" fill="url(#gCore)" filter="url(#blurL)"/>
+        <ellipse cx="-130" cy="-6" rx="160" ry="92"  fill="url(#gCore)" filter="url(#blurM)"/>
+      </g>
+
+      <!-- 4. 尘埃暗环：与银盘同构的椭圆环（长短轴比 ≈ 2:1），绕银心层层分布。
+           最外三环逐级降低不透明度，让暗纹向外平滑融进盘缘的辉光，而不是收成一条闭合暗边 -->
+      <g filter="url(#blurDust)" fill="none" stroke="#04050f">
+        <ellipse cx="-130" cy="-6"  rx="255" ry="126" stroke-width="36" stroke-opacity=".30"/>
+        <ellipse cx="-118" cy="4"   rx="425" ry="209" stroke-width="44" stroke-opacity=".23"/>
+        <ellipse cx="-142" cy="-14" rx="500" ry="245" stroke-width="38" stroke-opacity=".165"/>
+        <ellipse cx="-142" cy="-14" rx="560" ry="274" stroke-width="36" stroke-opacity=".11"/>
+        <ellipse cx="-142" cy="-14" rx="618" ry="303" stroke-width="34" stroke-opacity=".06"/>
+      </g>
+
+      <!-- 5. 尘埃团块：沿椭圆轨道环绕银心（内圈快、外圈慢） -->
+      <g>
+        <!-- 内轨 -->
+        <ellipse rx="64" ry="24" fill="url(#gDustDark)" opacity=".55">
+          <animateMotion dur="38s" repeatCount="indefinite" rotate="auto">
+            <mpath href="#dustOrbIn"/>
+          </animateMotion>
+        </ellipse>
+        <ellipse rx="50" ry="19" fill="url(#gDustDark)" opacity=".44">
+          <animateMotion dur="38s" begin="-12.7s" repeatCount="indefinite" rotate="auto">
+            <mpath href="#dustOrbIn"/>
+          </animateMotion>
+        </ellipse>
+        <ellipse rx="74" ry="28" fill="url(#gDustDark)" opacity=".48">
+          <animateMotion dur="38s" begin="-25.3s" repeatCount="indefinite" rotate="auto">
+            <mpath href="#dustOrbIn"/>
+          </animateMotion>
+        </ellipse>
+        <!-- 中轨 -->
+        <ellipse rx="82" ry="30" fill="url(#gDustDark)" opacity=".5">
+          <animateMotion dur="62s" repeatCount="indefinite" rotate="auto">
+            <mpath href="#dustOrbMid"/>
+          </animateMotion>
+        </ellipse>
+        <ellipse rx="62" ry="23" fill="url(#gDustDark)" opacity=".4">
+          <animateMotion dur="62s" begin="-20.7s" repeatCount="indefinite" rotate="auto">
+            <mpath href="#dustOrbMid"/>
+          </animateMotion>
+        </ellipse>
+        <ellipse rx="96" ry="34" fill="url(#gDustDark)" opacity=".45">
+          <animateMotion dur="62s" begin="-41.3s" repeatCount="indefinite" rotate="auto">
+            <mpath href="#dustOrbMid"/>
+          </animateMotion>
+        </ellipse>
+        <!-- 外轨 -->
+        <ellipse rx="100" ry="34" fill="url(#gDustDark)" opacity=".4">
+          <animateMotion dur="88s" repeatCount="indefinite" rotate="auto">
+            <mpath href="#dustOrbOut"/>
+          </animateMotion>
+        </ellipse>
+        <ellipse rx="78" ry="27" fill="url(#gDustDark)" opacity=".33">
+          <animateMotion dur="88s" begin="-44s" repeatCount="indefinite" rotate="auto">
+            <mpath href="#dustOrbOut"/>
+          </animateMotion>
+        </ellipse>
+      </g>
+    </g>
+  </g>
+
+  <!-- 银河带内的密集星点 -->
+  <g id="starsBand" class="layer"></g>
+
+  <!-- 中景星 -->
+  <g id="starsMid" class="layer"></g>
+
+  <!-- 近景亮星 + 光芒 -->
+  <g id="starsNear" class="layer"></g>
+
+  <!-- 点击种下的星（与近景星同步视差） -->
+  <g id="planted" class="layer"></g>
+
+  <!-- 鼠标划过的星尘 -->
+  <g id="dust"></g>
+
+  <!-- 流星 -->
+  <g id="shooting"></g>
+  </g><!-- /#scene -->
+
+  <!-- 开场银心闪光：在遮罩之外，所以先于星光亮起 -->
+  <g id="flash" opacity="0">
+    <rect x="0" y="0" width="1600" height="900" fill="url(#gFlash)"/>
+  </g>
+
+  <!-- 光标柔光 -->
+  <g id="cursorGlow" opacity="0">
+    <circle r="300" fill="url(#gCursor)"/>
+  </g>
+</svg>
+
+<div class="hud">
+  <h1>Milky Way</h1>
+  <p>移动鼠标 · 点击星空种一颗星</p>
+  <p class="count">已点亮 <b id="statStars">0</b> 颗星 · 流星 <b id="statMeteors">0</b> 颗</p>
+  <button class="music" id="musicBtn" type="button" aria-label="背景音乐">
+    <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+    <span class="label" id="musicLabel">背景音乐</span>
+  </button>
+</div>
+
+<div class="panel">
+  <div class="mode">色调 <b id="statMode">深空</b></div>
+  <ul class="keys">
+    <li><kbd>点击</kbd>种一颗星</li>
+    <li><kbd>F</kbd>召唤流星雨</li>
+    <li><kbd>空格</kbd>定格星空</li>
+    <li><kbd>C</kbd>切换色调</li>
+    <li><kbd>R</kbd>清除星辰</li>
+    <li><kbd>H</kbd>隐藏界面</li>
+  </ul>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const NS = "http://www.w3.org/2000/svg";
+  const W = 1600, H = 900;
+  const CX = 800, CY = 450;
+  const TILT = -20 * Math.PI / 180;
+  const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  // 近似正态分布，落在 (-1, 1)
+  const gauss = () => (Math.random() + Math.random() + Math.random() + Math.random() - 2) / 2;
+
+  const PALETTE = [
+    "#ffffff", "#ffffff", "#ffffff",
+    "#eaf2ff", "#d8e8ff", "#c6dbff",
+    "#fff3da", "#ffe5bd", "#f2e6ff"
+  ];
+
+  const el = (tag, attrs) => {
+    const n = document.createElementNS(NS, tag);
+    if (attrs) for (const k in attrs) n.setAttribute(k, attrs[k]);
+    return n;
+  };
+
+  /* ---------- 单颗星 ---------- */
+  function star(x, y, r, o, color, animated) {
+    const c = el("circle", {
+      cx: x.toFixed(1),
+      cy: y.toFixed(1),
+      r: r.toFixed(2),
+      fill: color
+    });
+    if (animated && !REDUCED) {
+      c.setAttribute("class", "star");
+      c.style.setProperty("--o", o.toFixed(3));
+      c.style.animationDuration = rand(2.4, 7.6).toFixed(2) + "s";
+      c.style.animationDelay = (-rand(0, 9)).toFixed(2) + "s";
+    } else {
+      c.setAttribute("opacity", o.toFixed(3));
+    }
+    return c;
+  }
+
+  /* ---------- 亮星的四角光芒 ----------
+     全部用渐变代替滤镜：每颗亮星原本要挂 4 个滤镜实例（光晕 + 星核 + 两条光芒），
+     26 颗就是 104 个，首帧光栅化代价极高。径向/线性渐变能做到几乎一样的观感。 */
+  function flare(x, y, size, op) {
+    const g = el("g", { transform: "translate(" + x.toFixed(1) + " " + y.toFixed(1) + ")" });
+
+    // 外圈光晕
+    g.appendChild(el("circle", {
+      r: (size * 4.6).toFixed(1),
+      fill: "url(#gStarGlow)",
+      opacity: (op * 0.9).toFixed(3)
+    }));
+
+    // 星核
+    g.appendChild(el("circle", {
+      r: size.toFixed(2),
+      fill: "#ffffff",
+      opacity: op.toFixed(3)
+    }));
+
+    // 十字光芒
+    const rot = rand(0, 180).toFixed(1);
+    [[size * 9.5, size * 0.5], [size * 0.5, size * 9.5]].forEach(function (d) {
+      g.appendChild(el("ellipse", {
+        rx: d[0].toFixed(1),
+        ry: d[1].toFixed(1),
+        fill: "url(#gRay)",
+        opacity: (op * 0.78).toFixed(3),
+        transform: "rotate(" + rot + ")"
+      }));
+    });
+
+    return g;
+  }
+
+  /* ---------- 背景里的其他星系 ---------- */
+  const galG = document.getElementById("galaxies");
+
+  // 对数螺旋路径：从内圈 r0 旋到 r1，squash 压扁成盘状
+  function spiralPath(r0, r1, turns, dir, squash, steps) {
+    let d = "";
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const r = r0 + (r1 - r0) * t;
+      const a = dir * turns * Math.PI * 2 * t;
+      const x = Math.cos(a) * r;
+      const y = Math.sin(a) * r * squash;
+      d += (i ? " L" : "M") + x.toFixed(1) + " " + y.toFixed(1);
+    }
+    return d;
+  }
+
+  // 螺旋星系：盘面辉光 + 两条旋臂 + 暖色核心
+  function spiralGalaxy(cx, cy, R, rot, squash, op, turns) {
+    const g = el("g", {
+      transform: "translate(" + cx + " " + cy + ") rotate(" + rot + ") scale(" + (R / 100).toFixed(3) + ")",
+      opacity: op
+    });
+
+    g.appendChild(el("ellipse", {
+      rx: 100, ry: (100 * squash).toFixed(1),
+      fill: "url(#gDisk)", filter: "url(#blurM)"
+    }));
+
+    [1, -1].forEach(function (dir) {
+      g.appendChild(el("path", {
+        d: spiralPath(13, 92, turns, dir, squash, 40),
+        fill: "none", stroke: "#cfe0ff", "stroke-width": 6,
+        "stroke-linecap": "round", opacity: .42, filter: "url(#blurS)"
+      }));
+      g.appendChild(el("path", {
+        d: spiralPath(9, 66, turns, dir, squash, 34),
+        fill: "none", stroke: "#ffffff", "stroke-width": 2.6,
+        "stroke-linecap": "round", opacity: .34, filter: "url(#blurS)"
+      }));
+    });
+
+    g.appendChild(el("ellipse", {
+      rx: 19, ry: (19 * squash).toFixed(1),
+      fill: "url(#gGalCore)", filter: "url(#blurS)"
+    }));
+
+    return g;
+  }
+
+  // 椭圆星系：一团柔和的暖色光斑
+  function ellipticalGalaxy(cx, cy, R, rot, squash, op) {
+    const g = el("g", {
+      transform: "translate(" + cx + " " + cy + ") rotate(" + rot + ")",
+      opacity: op
+    });
+    g.appendChild(el("ellipse", {
+      rx: R, ry: (R * squash).toFixed(1),
+      fill: "url(#gEllip)", filter: "url(#blurM)"
+    }));
+    g.appendChild(el("ellipse", {
+      rx: (R * .34).toFixed(1), ry: (R * .34 * squash).toFixed(1),
+      fill: "url(#gGalCore)", filter: "url(#blurS)"
+    }));
+    return g;
+  }
+
+  // 矮星系：远处一枚淡淡的椭圆光斑
+  function dwarfGalaxy(cx, cy, R, rot, squash, op) {
+    return el("ellipse", {
+      cx: cx, cy: cy,
+      rx: R, ry: (R * squash).toFixed(1),
+      fill: "url(#gDwarf)", opacity: op,
+      filter: "url(#blurS)",
+      transform: "rotate(" + rot + " " + cx + " " + cy + ")"
+    });
+  }
+
+  // 散布在银河带之外的空旷天区
+  galG.appendChild(spiralGalaxy(250, 172, 118, -28, .40, .78, .95));
+  galG.appendChild(spiralGalaxy(1425, 726, 86, 34, .52, .72, .85));
+  galG.appendChild(spiralGalaxy(1235, 792, 46, -12, .46, .50, 1.05));
+  galG.appendChild(ellipticalGalaxy(772, 96, 62, 18, .62, .55));
+  galG.appendChild(ellipticalGalaxy(690, 836, 48, -22, .58, .48));
+  galG.appendChild(dwarfGalaxy(430, 118, 26, 24, .50, .55));
+  galG.appendChild(dwarfGalaxy(1520, 512, 22, -30, .55, .45));
+  galG.appendChild(dwarfGalaxy(960, 852, 30, 12, .48, .40));
+  galG.appendChild(dwarfGalaxy(118, 320, 20, -18, .60, .38));
+
+  /* ---------- 生成星空 ---------- */
+  const farG  = document.getElementById("starsFar");
+  const bandG = document.getElementById("starsBand");
+  const midG  = document.getElementById("starsMid");
+  const nearG = document.getElementById("starsNear");
+
+  // 远景：细密微星
+  for (let i = 0; i < 620; i++) {
+    farG.appendChild(star(
+      rand(0, W), rand(0, H),
+      rand(0.35, 0.9),
+      rand(0.2, 0.6),
+      pick(PALETTE),
+      Math.random() < 0.35
+    ));
+  }
+
+  // 银盘内：沿倾斜盘面分布，越靠中心越密越亮
+  for (let i = 0; i < 720; i++) {
+    const u = rand(-880, 880);
+    const v = gauss() * 260;
+    const x = CX + u * Math.cos(TILT) - v * Math.sin(TILT);
+    const y = CY + u * Math.sin(TILT) + v * Math.cos(TILT);
+    if (x < -80 || x > W + 80 || y < -80 || y > H + 80) continue;
+
+    const near = 1 - Math.min(1, Math.abs(v) / 320);
+    bandG.appendChild(star(
+      x, y,
+      rand(0.35, 0.95) + near * 0.4,
+      rand(0.3, 0.72) + near * 0.28,
+      pick(PALETTE),
+      Math.random() < 0.4
+    ));
+  }
+
+  // 中景
+  for (let i = 0; i < 280; i++) {
+    midG.appendChild(star(
+      rand(0, W), rand(0, H),
+      rand(0.7, 1.4),
+      rand(0.5, 0.9),
+      pick(PALETTE),
+      Math.random() < 0.6
+    ));
+  }
+
+  // 近景亮星 + 光芒
+  for (let i = 0; i < 26; i++) {
+    const x = rand(50, W - 50);
+    const y = rand(50, H - 50);
+    const s = rand(1.5, 2.6);
+    nearG.appendChild(star(x, y, s, 1, "#ffffff", true));
+    nearG.appendChild(flare(x, y, s * rand(1.6, 2.6), rand(0.5, 0.85)));
+  }
+
+  /* ---------- 鼠标视差 ---------- */
+  // 深度系数：数字越大离观察者越近，移动幅度越大
+  const DEPTH_NEAR = 33;          // 近景星，种下的星跟随同一深度
+  const plantedNode = document.getElementById("planted");
+
+  const layers = [
+    [document.getElementById("galaxies"),  3],
+    [document.getElementById("nebula"),    6],
+    [document.getElementById("galaxy"),    9],
+    [document.getElementById("starsBand"), 11],
+    [document.getElementById("starsFar"),  15],
+    [document.getElementById("starsMid"),  23],
+    [document.getElementById("starsNear"), DEPTH_NEAR],
+    [plantedNode,                          DEPTH_NEAR]
+  ];
+
+  // planted 层的目标平移量，作为读不到渲染值时的兜底
+  const parallaxOffset = { x: 0, y: 0 };
+
+  // 读取某层当前实际的平移量（含 transition 插值中的中间值）
+  function currentOffset(node, fallback) {
+    const t = getComputedStyle(node).transform;
+    if (t && t !== "none") {
+      let m = t.match(/matrix\(([^)]+)\)/);
+      if (m) {
+        const p = m[1].split(",").map(Number);
+        return { x: p[4] || 0, y: p[5] || 0 };
+      }
+      m = t.match(/matrix3d\(([^)]+)\)/);
+      if (m) {
+        const p = m[1].split(",").map(Number);
+        return { x: p[12] || 0, y: p[13] || 0 };
+      }
+    }
+    return fallback || { x: 0, y: 0 };
+  }
+
+  let mx = 0, my = 0, raf = null;
+  function applyParallax() {
+    raf = null;
+    for (let i = 0; i < layers.length; i++) {
+      const node = layers[i][0], d = layers[i][1];
+      node.style.transform = "translate(" + (-mx * d).toFixed(2) + "px," + (-my * d).toFixed(2) + "px)";
+    }
+    parallaxOffset.x = -mx * DEPTH_NEAR;
+    parallaxOffset.y = -my * DEPTH_NEAR;
+  }
+  window.addEventListener("mousemove", function (e) {
+    mx = (e.clientX / window.innerWidth - 0.5) * 2;
+    my = (e.clientY / window.innerHeight - 0.5) * 2;
+    if (!raf) raf = requestAnimationFrame(applyParallax);
+  }, { passive: true });
+
+  // 触摸设备：轻微自动漂移
+  window.addEventListener("touchmove", function (e) {
+    if (!e.touches[0]) return;
+    mx = (e.touches[0].clientX / window.innerWidth - 0.5) * 2;
+    my = (e.touches[0].clientY / window.innerHeight - 0.5) * 2;
+    if (!raf) raf = requestAnimationFrame(applyParallax);
+  }, { passive: true });
+
+  /* ---------- 流星 ---------- */
+  const shootLayer = document.getElementById("shooting");
+
+  function spawnShooting(opt) {
+    opt = opt || {};
+
+    const x    = opt.x    !== undefined ? opt.x    : rand(-180, W * 0.82);
+    const y    = opt.y    !== undefined ? opt.y    : rand(-120, H * 0.55);
+    const ang  = opt.ang  !== undefined ? opt.ang  : rand(14, 34);
+    const dist = opt.dist !== undefined ? opt.dist : rand(520, 900);
+    const len  = opt.len  !== undefined ? opt.len  : rand(120, 230);
+    const dur  = opt.dur  !== undefined ? opt.dur  : rand(0.9, 1.5);
+    const wid  = opt.wid  !== undefined ? opt.wid  : rand(1.2, 2.2);
+    const rad  = ang * Math.PI / 180;
+
+    const wrap = el("g", { class: "shoot" });
+    wrap.style.setProperty("--tx", (Math.cos(rad) * dist).toFixed(1) + "px");
+    wrap.style.setProperty("--ty", (Math.sin(rad) * dist).toFixed(1) + "px");
+    wrap.style.animationDuration = dur.toFixed(2) + "s";
+    wrap.style.animationTimingFunction = "cubic-bezier(.32,.52,.52,1)";
+
+    const inner = el("g", {
+      transform: "translate(" + x.toFixed(1) + " " + y.toFixed(1) + ") rotate(" + ang.toFixed(1) + ")"
+    });
+
+    inner.appendChild(el("line", {
+      x1: (-len).toFixed(1), y1: 0, x2: 0, y2: 0,
+      stroke: "url(#trail)",
+      "stroke-width": wid.toFixed(2),
+      "stroke-linecap": "round"
+    }));
+    inner.appendChild(el("circle", { r: 1.8, fill: "#ffffff", filter: "url(#glow)" }));
+
+    wrap.appendChild(inner);
+    shootLayer.appendChild(wrap);
+    wrap.addEventListener("animationend", function () { wrap.remove(); });
+    bumpMeteor();
+  }
+
+  /* ---------- 自动流星：偶尔一颗 ---------- */
+  function scheduleShooting() {
+    setTimeout(function () {
+      spawnShooting();
+      if (Math.random() < 0.28) setTimeout(spawnShooting, rand(220, 700));
+      scheduleShooting();
+    }, rand(2400, 7200));
+  }
+
+  if (!REDUCED) setTimeout(scheduleShooting, 1500);
+
+  /* ---------- 按 F 召唤流星雨 ---------- */
+  // 辐射点涟漪：召唤瞬间在起点天区留下一圈极淡的扩散光环
+  function spawnRipple(x, y) {
+    const c = el("circle", {
+      cx: x.toFixed(1), cy: y.toFixed(1), r: 30,
+      fill: "none",
+      stroke: "#cfe2ff",
+      "stroke-width": 1.6,
+      "vector-effect": "non-scaling-stroke"
+    });
+    c.style.transformBox = "fill-box";
+    c.style.transformOrigin = "center";
+    c.style.animation = "ripple 1s cubic-bezier(.2,.7,.4,1) forwards";
+    shootLayer.appendChild(c);
+    c.addEventListener("animationend", function () { c.remove(); });
+  }
+
+  let lastSummon = 0;
+
+  function summonShower() {
+    const now = performance.now();
+    if (now - lastSummon < 420) return;   // 防止狂按堆积
+    lastSummon = now;
+
+    // 辐射点：画面上方偏中，流星由此扇面散开
+    const rx = rand(140, W - 140);
+    const ry = rand(30, 210);
+    const baseAng = rand(22, 42);
+    const count = Math.floor(rand(6, 11));
+
+    spawnRipple(rx, ry);
+
+    for (let i = 0; i < count; i++) {
+      const ang = baseAng + rand(-11, 11);
+      const rad = ang * Math.PI / 180;
+      const travel = rand(0, 260);                       // 沿出射方向推开，形成扇形
+      const sx = rx + Math.cos(rad) * travel + rand(-36, 36);
+      const sy = ry + Math.sin(rad) * travel + rand(-36, 36);
+
+      setTimeout(function () {
+        spawnShooting({
+          x: sx,
+          y: sy,
+          ang: ang,
+          dist: rand(640, 1080),
+          len: rand(150, 285),
+          dur: rand(0.85, 1.35),
+          wid: rand(1.4, 2.6)
+        });
+      }, i * rand(90, 250));
+    }
+  }
+
+  /* ---------- 屏幕坐标 → viewBox 坐标 ---------- */
+  const sky = document.getElementById("sky");
+  let invCTM = null;
+  function refreshCTM() {
+    const m = sky.getScreenCTM();
+    invCTM = m ? m.inverse() : null;
+  }
+  refreshCTM();
+  window.addEventListener("resize", refreshCTM);
+
+  function toSvg(clientX, clientY) {
+    if (!invCTM) return null;
+    const p = new DOMPoint(clientX, clientY).matrixTransform(invCTM);
+    return { x: p.x, y: p.y };
+  }
+
+  /* ---------- 统计 ---------- */
+  const statStars   = document.getElementById("statStars");
+  const statMeteors = document.getElementById("statMeteors");
+  const statMode    = document.getElementById("statMode");
+
+  let meteorCount = 0;
+  function bumpMeteor() {
+    meteorCount++;
+    statMeteors.textContent = meteorCount;
+  }
+
+  /* ---------- 点击：种一颗星 ---------- */
+  let plantedCount = 0;
+
+  function plantStar(x, y) {
+    const size  = rand(1.8, 2.9);
+    const outer = el("g", { transform: "translate(" + x.toFixed(1) + " " + y.toFixed(1) + ")" });
+
+    // 两圈先后扩散的绽放光环
+    const ring1 = el("circle", {
+      r: 7, fill: "none", stroke: "#dbeaff", "stroke-width": 1.4,
+      "vector-effect": "non-scaling-stroke"
+    });
+    ring1.style.animation = "bloom 1.1s cubic-bezier(.2,.7,.3,1) forwards";
+    outer.appendChild(ring1);
+
+    const ring2 = el("circle", {
+      r: 4, fill: "none", stroke: "#a8c4ff", "stroke-width": 1,
+      "vector-effect": "non-scaling-stroke"
+    });
+    ring2.style.animation = "bloom 1.5s cubic-bezier(.2,.7,.3,1) .14s forwards";
+    outer.appendChild(ring2);
+
+    // 星核：先弹出，之后持续闪烁
+    const pop = el("g");
+    pop.style.animation = "starPop .75s cubic-bezier(.2,1.35,.35,1) forwards";
+
+    pop.appendChild(el("circle", {
+      r: (size * 4).toFixed(1), fill: "#bcd4ff",
+      opacity: .14, filter: "url(#blurS)"
+    }));
+
+    const core = el("circle", { r: size.toFixed(2), fill: "#ffffff", filter: "url(#glow)" });
+    core.setAttribute("class", "star");
+    core.style.setProperty("--o", "1");
+    core.style.animationDuration = rand(2.6, 5.2).toFixed(2) + "s";
+    core.style.animationDelay = (-rand(0, 4)).toFixed(2) + "s";
+    pop.appendChild(core);
+
+    const rot = rand(0, 180).toFixed(1);
+    [[size * 10, size * 0.55], [size * 0.55, size * 10]].forEach(function (d) {
+      pop.appendChild(el("ellipse", {
+        rx: d[0].toFixed(1), ry: d[1].toFixed(1),
+        fill: "#ffffff", opacity: .45,
+        filter: "url(#blurS)",
+        transform: "rotate(" + rot + ")"
+      }));
+    });
+
+    outer.appendChild(pop);
+    plantedNode.appendChild(outer);
+
+    // 光环扩散完就撤掉，只留下星
+    ring1.addEventListener("animationend", function () { ring1.remove(); });
+    ring2.addEventListener("animationend", function () { ring2.remove(); });
+
+    plantedCount++;
+    statStars.textContent = plantedCount;
+  }
+
+  sky.addEventListener("pointerdown", function (e) {
+    const p = toSvg(e.clientX, e.clientY);
+    if (!p) return;
+    // planted 层参与视差，先补偿当前位移，保证星正好落在点击处
+    const off = currentOffset(plantedNode, parallaxOffset);
+    plantStar(p.x - off.x, p.y - off.y);
+  });
+
+  function clearPlanted() {
+    Array.prototype.slice.call(plantedNode.children).forEach(function (node) {
+      node.style.transition = "opacity .45s ease";
+      node.style.opacity = "0";
+      setTimeout(function () { node.remove(); }, 470);
+    });
+    plantedCount = 0;
+    statStars.textContent = "0";
+  }
+
+  /* ---------- 光标柔光 + 星尘尾迹 ---------- */
+  const glowG = document.getElementById("cursorGlow");
+  const dustG = document.getElementById("dust");
+  let lastDust = 0;
+
+  function spawnDust(x, y) {
+    const now = performance.now();
+    if (now - lastDust < 55) return;
+    lastDust = now;
+
+    while (dustG.childElementCount > 36) dustG.firstChild.remove();
+
+    const c = el("circle", {
+      cx: x.toFixed(1), cy: y.toFixed(1),
+      r: rand(0.7, 1.7).toFixed(2),
+      fill: pick(["#ffffff", "#dce9ff", "#cfe0ff"])
+    });
+    c.style.transformBox = "fill-box";
+    c.style.transformOrigin = "center";
+    c.style.animation = "dustFade " + rand(0.7, 1.4).toFixed(2) + "s ease-out forwards";
+    dustG.appendChild(c);
+    c.addEventListener("animationend", function () { c.remove(); });
+  }
+
+  // 位置用指数平滑逼近指针：既跟手，又保留一点柔和尾随
+  const GLOW_EASE = 0.32;              // 每帧向目标靠近的比例，越大越跟手
+  let gx = 800, gy = 450;              // 当前渲染位置
+  let tgx = 800, tgy = 450;            // 指针目标位置
+  let glowRaf = null, glowSeeded = false;
+
+  function glowStep() {
+    glowRaf = null;
+    gx += (tgx - gx) * GLOW_EASE;
+    gy += (tgy - gy) * GLOW_EASE;
+
+    if (Math.abs(tgx - gx) < 0.4 && Math.abs(tgy - gy) < 0.4) {
+      gx = tgx; gy = tgy;              // 收尾对齐，避免永远差一点点
+    } else {
+      glowRaf = requestAnimationFrame(glowStep);
+    }
+    glowG.setAttribute("transform", "translate(" + gx.toFixed(1) + " " + gy.toFixed(1) + ")");
+  }
+
+  window.addEventListener("pointermove", function (e) {
+    const p = toSvg(e.clientX, e.clientY);
+    if (!p) return;
+
+    tgx = p.x; tgy = p.y;
+    if (!glowSeeded) { gx = p.x; gy = p.y; glowSeeded = true; }  // 首次出现直接到位
+    if (glowG.getAttribute("opacity") !== "1") glowG.setAttribute("opacity", "1");
+
+    spawnDust(p.x, p.y);
+    if (!glowRaf) glowRaf = requestAnimationFrame(glowStep);
+  }, { passive: true });
+
+  // 指针离开窗口：淡掉柔光（window 上不触发 pointerleave，用 mouseout + relatedTarget 判断）
+  document.addEventListener("mouseout", function (e) {
+    if (!e.relatedTarget) glowG.setAttribute("opacity", "0");
+  });
+
+  /* ---------- 色调切换 ---------- */
+  const THEMES = [
+    {
+      name: "深空",
+      halo: ["#8fa6ff", "#7d90f0", "#6d63d8", "#3b2f8f", "#2a2070", "#1a1040"],
+      band: ["#fff6e4", "#ffe6bd", "#dcc4ff", "#8d7ae0", "#453a9c", "#20164f"],
+      core: ["#fffdf6", "#fff0cd", "#f8d19a", "#c3a2ee", "#5443a8", "#1d1450"],
+      neb: [
+        ["#a077ff", "#9366f8", "#7b4ff0", "#5c37c8", "#452a9f", "#3a1f8f"],
+        ["#5b9bff", "#4a83f0", "#2f5fd8", "#1e4299", "#16336f", "#122a6e"],
+        ["#ff8ad0", "#f06ab8", "#d94fa0", "#9c3474", "#7d2a60", "#6a1f52"],
+        ["#5fe3d8", "#3fbcc0", "#1f8f9c", "#155f6e", "#114a58", "#0d3a4a"]
+      ]
+    },
+    {
+      name: "极光",
+      halo: ["#7ff0d0", "#5fd8bc", "#2f9d9a", "#1a6e78", "#0c4a58", "#04222e"],
+      band: ["#eafff8", "#a8f0dc", "#7fd0ff", "#3a8fc0", "#1a4a6e", "#062434"],
+      core: ["#ffffff", "#e4fff5", "#9fe8d8", "#5fc0d0", "#1a5a7a", "#052030"],
+      neb: [
+        ["#5fe3c8", "#3fd0b0", "#1f9d8f", "#14706a", "#0f5450", "#0d4a48"],
+        ["#6fd0ff", "#55b4f0", "#2f7fd8", "#1f5aa0", "#163f72", "#123a6e"],
+        ["#a8ffd8", "#78e8bc", "#3fb08a", "#2a7a62", "#175a48", "#0d4a3a"],
+        ["#7fe8ff", "#55ccdd", "#1f8f9c", "#155f6e", "#114a58", "#0d3a4a"]
+      ]
+    },
+    {
+      name: "玫瑰",
+      halo: ["#ff9ec8", "#f078b0", "#d05a9a", "#9a2f6e", "#5e1444", "#2e0a22"],
+      band: ["#fff2f8", "#ffc4dc", "#ff9ac8", "#c04a8a", "#6a1f52", "#2a0a1e"],
+      core: ["#fffdf8", "#ffe8dc", "#ffb8c0", "#d070a0", "#5a1a48", "#22081c"],
+      neb: [
+        ["#ff8ad0", "#f06ab8", "#c04a9a", "#8a2f70", "#6a2555", "#5a1f52"],
+        ["#ffb0a0", "#f08a7a", "#d0605a", "#9a3a38", "#7a2a28", "#6a2020"],
+        ["#e0a0ff", "#c078f0", "#8a4fd0", "#5f3399", "#472670", "#3a1a5e"],
+        ["#ff9ec8", "#f078aa", "#c05a8a", "#8a3a62", "#6a2a48", "#5a1f3a"]
+      ]
+    }
+  ];
+
+  const stopsOf = id => Array.prototype.slice.call(document.querySelectorAll("#" + id + " stop"));
+  const REF = {
+    halo: stopsOf("gHalo"),
+    band: stopsOf("gBand"),
+    core: stopsOf("gCore"),
+    neb:  [stopsOf("nPurple"), stopsOf("nBlue"), stopsOf("nPink"), stopsOf("nTeal")]
+  };
+
+  let themeIndex = 0;
+
+  function applyTheme(t) {
+    const setAll = function (nodes, colors) {
+      nodes.forEach(function (s, i) {
+        if (colors[i]) s.setAttribute("stop-color", colors[i]);
+      });
+    };
+    setAll(REF.halo, t.halo);
+    setAll(REF.band, t.band);
+    setAll(REF.core, t.core);
+    t.neb.forEach(function (colors, gi) { setAll(REF.neb[gi], colors); });
+  }
+
+  let paused = false;
+
+  function syncMode() {
+    statMode.textContent = THEMES[themeIndex].name + (paused ? " · 定格" : "");
+  }
+
+  function cycleTheme() {
+    themeIndex = (themeIndex + 1) % THEMES.length;
+    applyTheme(THEMES[themeIndex]);
+    syncMode();
+  }
+
+  /* ---------- 空格定格 ---------- */
+  function togglePause() {
+    paused = !paused;
+    document.body.classList.toggle("paused", paused);
+    // CSS 动画由 class 控制，SMIL（尘埃环绕、开场遮罩）要单独停
+    if (paused) sky.pauseAnimations(); else sky.unpauseAnimations();
+    syncMode();
+  }
+
+  /* ---------- 键盘 ---------- */
+  window.addEventListener("keydown", function (e) {
+    if (e.repeat) return;
+
+    if (e.code === "Space") {
+      e.preventDefault();
+      togglePause();
+      return;
+    }
+
+    switch (e.key.toLowerCase()) {
+      case "f": summonShower(); break;
+      case "c": cycleTheme();   break;
+      case "r": clearPlanted(); break;
+      case "h": document.body.classList.toggle("hideui"); break;
+    }
+  });
+
+  /* ---------- 背景音乐 ---------- */
+  // 浏览器要求先有用户手势才允许出声，所以先静默待命，首次交互时淡入
+  const audio = document.getElementById("bgm");
+  audio.volume = 0;
+
+  const musicBtn = document.getElementById("musicBtn");
+  const musicLabel = document.getElementById("musicLabel");
+  let musicOn = false;
+  let fadeTimer = null;
+
+  function fadeVolume(target, ms) {
+    if (fadeTimer) clearInterval(fadeTimer);
+    const from = audio.volume;
+    const t0 = performance.now();
+    fadeTimer = setInterval(function () {
+      const k = Math.min(1, (performance.now() - t0) / ms);
+      audio.volume = Math.max(0, Math.min(1, from + (target - from) * k));
+      if (k >= 1) { clearInterval(fadeTimer); fadeTimer = null; }
+    }, 40);
+  }
+
+  function detachKick() {
+    window.removeEventListener("pointerdown", kickMusic);
+    window.removeEventListener("keydown", kickMusic);
+  }
+
+  function playMusic() {
+    if (musicOn) return;
+    musicOn = true;
+    audio.play().then(function () {
+      fadeVolume(0.42, 2400);          // 缓入，避免一上来就轰一下
+      musicBtn.classList.add("playing");
+      musicLabel.textContent = "音乐播放中";
+      detachKick();
+    }).catch(function () {
+      musicOn = false;                 // 被自动播放策略拦下，等下次手势再试
+    });
+  }
+
+  function stopMusic() {
+    musicOn = false;
+    musicBtn.classList.remove("playing");
+    musicLabel.textContent = "背景音乐";
+    fadeVolume(0, 420);
+    setTimeout(function () { if (!musicOn) audio.pause(); }, 470);
+  }
+
+  function kickMusic() {
+    if (!musicOn) playMusic();
+  }
+  window.addEventListener("pointerdown", kickMusic);
+  window.addEventListener("keydown", kickMusic);
+
+  // 按钮自己管切换，别让 window 的自动起播抢先
+  musicBtn.addEventListener("pointerdown", function (e) { e.stopPropagation(); });
+  musicBtn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    if (musicOn) stopMusic(); else playMusic();
+  });
+
+  /* ---------- 开场动画收尾 ---------- */
+  // 星光扩散完成后撤掉遮罩，避免遮罩带来持续的离屏合成开销
+  const sceneNode = document.getElementById("scene");
+  let maskCleared = false;
+  function clearIntroMask() {
+    if (maskCleared) return;
+    maskCleared = true;
+    sceneNode.removeAttribute("mask");
+  }
+
+  if (REDUCED) {
+    clearIntroMask();
+  } else {
+    const introCircle = document.querySelector("#introMask circle");
+    // 等遮罩完全张开的画面真正渲染过一帧再撤，避免渲染路径切换时的抖动
+    if (introCircle) introCircle.addEventListener("endEvent", function () {
+      setTimeout(clearIntroMask, 260);
+    });
+    setTimeout(clearIntroMask, 5000);   // 兜底：标签页在后台时 SMIL 可能暂停
+  }
+
+})();
+</script>
+</body>
+</html>
