@@ -1,5 +1,5 @@
 # 星空 · 银河系
-#  yumeskr.github.io/galaxy
+#  [yumeskr.github.io/galaxy](https://yumeskr.github.io/galaxy/)
 一个完全用**手写 SVG** 实现的交互式银河场景 —— 没有 Canvas、没有第三方库、没有构建步骤，双击 HTML 文件即可运行。
 
 约 980 颗星分成 4 层深度，鼠标移动时按不同系数产生视差；银河盘由多层椭圆与径向渐变叠出，尘埃带沿椭圆轨道持续环绕银心。
