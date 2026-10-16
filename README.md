@@ -1,5 +1,7 @@
 # 星空 · 银河系
-#  [yumeskr.github.io/galaxy](https://yumeskr.github.io/galaxy/)
+
+🔗 **在线预览**：[yumeskr.github.io/galaxy](https://yumeskr.github.io/galaxy/)
+
 一个完全用**手写 SVG** 实现的交互式银河场景 —— 没有 Canvas、没有第三方库、没有构建步骤，双击 HTML 文件即可运行。
 
 约 980 颗星分成 4 层深度，鼠标移动时按不同系数产生视差；银河盘由多层椭圆与径向渐变叠出，尘埃带沿椭圆轨道持续环绕银心。
@@ -46,9 +48,9 @@
 无需安装任何依赖，直接用浏览器打开即可：
 
 ```bash
-open galaxy.html      # macOS
-start galaxy.html     # Windows
-xdg-open galaxy.html  # Linux
+open index.html      # macOS
+start index.html     # Windows
+xdg-open index.html  # Linux
 ```
 
 建议使用 Chromium 内核浏览器（Edge / Chrome），以获得完整的 SVG 滤镜与 SMIL 支持。
@@ -63,7 +65,7 @@ xdg-open galaxy.html  # Linux
 
 ```
 .
-├── galaxy.html      # 主页面
+├── index.html       # 主页面
 └── bgm.mp3          # 背景音乐
 ```
 
